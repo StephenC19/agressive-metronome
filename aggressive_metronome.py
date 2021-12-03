@@ -1,50 +1,39 @@
 import os
 import mido
-import time
 import threading
+import pygame
+import sched
 import RPi.GPIO as GPIO
 from pathlib import Path
-from playsound import playsound
 from foam_gun_control import *
-import subprocess
+from time import sleep, time
 
 RIGHT_SERVO_PIN = 2
 LEFT_SERVO_PIN = 17
 POWER_SERVO_PIN = 3
 
-metronome_sound_file = "metronome_tick.mp3"
+metronome_sound_file = "120_metronome.mp3"
 
-# Metronome
-def play_blip_sound():
-    playsound(metronome_sound_file)
-
-def calculate_accepted_times(bpm, duration):
-    current_time = time.time()
+def calculate_accepted_times(start_time, bpm, duration):
     acceptable_times = []
-    count = bpm * (duration/60)
-    for i in range(count):
-        acceptable_times.append(current_time + (60/bpm))
-
+    count = float(bpm) * (int(duration)/60)
+    # Skip first 4 for count in
+    for i in range(5, int(count)):
+        time_increment = start_time + (i*(60/int(bpm)))
+        acceptable_times.append(time_increment)
     return acceptable_times
 
 def in_time(hit_time, accepted_times, threshold):
     shoot = True
     print("Hit time: " + str(hit_time))
     for i in accepted_times:
-        if abs(hit_time - i) < threshold:
+        if abs(float(hit_time) - i) < threshold:
             print("in time - hit: " + str(hit_time) + ", accepted: " + str(i))
             shoot = False
             break
         # elif i < hit_time:
         #     accepted_times.remove(i)
     return shoot
-
-def start_metronome(bpm, time_length):
-    count = bpm * (time_length/60)
-    for i in range(count):
-        sound_thread = threading.Thread(target=play_blip_sound, args=())
-        sound_thread.start()
-        time.sleep(60/bpm)
 
 # Choose the correct MIDI device
 device_list = mido.get_input_names()
@@ -54,37 +43,39 @@ midi_device = device_list[int(device_choice) - 1]
 
 # Open MIDI device connection
 try:
-    # 'TD-17:TD-17 MIDI 1 20:0'
     midi_connection = mido.open_input(midi_device)
 except:
     print("No MIDI device found. Please make sure a device is connected.")
     exit(1)
 
 
-# Setup Metronome
-bpm = input("Enter the metronome speed in bpm")
-duration = input("Enter how long you'd like the metronome to run (in seconds)")
+# User input
+bpm = input("Enter the metronome speed in bpm: ")
+duration = input("Enter how long you'd like the metronome to run (in seconds): ")
 print("The motivating metronome will start once you hit the first note. \nGood Luck!")
-# 4 count in
 
-accepted_times = calculate_accepted_times(bpm, duration)
-print(accepted_times)
+# Init audio player
+pygame.mixer.init()
+pygame.mixer.music.load(metronome_sound_file)
+sound_thread = threading.Thread(target=pygame.mixer.music.play(), args=())
+scheduler = sched.scheduler(time.time, time.sleep)
+
+# Setup accepted times
+start_time = time.time() + 4 # Delay start by 4 seconds
+accepted_times = calculate_accepted_times(start_time, bpm, duration)
+
+# Start metronome sound
+scheduler.enterabs((start_time - 0.07), 1, sound_thread.start, ())
+scheduler.run()
+
 threshold = 0.30
 
+# Start listening to midi input notes
 try:
-    time.sleep(2)
-    # Start playing sounds
-
-    # Wait for first hit
-    for msg in midi_connection:
-        start_metronome(bpm, duration)
-        break
-
-    # Start aggressive metronomemetronome
     for msg in midi_connection:
         current_time = time.time()
         if not in_time(current_time, accepted_times, threshold):
-            shoot()
+            print("BANG")
 
 except KeyboardInterrupt:
     GPIO.cleanup()
