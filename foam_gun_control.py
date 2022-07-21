@@ -1,4 +1,5 @@
 import RPi.GPIO as GPIO
+import time
 
 RIGHT_SERVO_PIN = 2
 LEFT_SERVO_PIN = 17
@@ -24,8 +25,8 @@ def safe_angle(servo_control, side):
         set_angle(right, RIGHT_SERVO_PIN, servo_control)
 
 def trigger_angle(servo_control, side):
-    left = 140
-    right = 30
+    left = 100
+    right = 80
     if side == 'left':
         set_angle(left, LEFT_SERVO_PIN, servo_control)
     else:
